@@ -5,7 +5,7 @@
 #      Les fichiers supprimés du dépôt sont aussi supprimés en ligne.
 # Secrets à définir : Settings → Secrets and variables → Actions → New repository secret
 #   FTP_HOST (ex. ftp.cluster0XX.hosting.ovh.net), FTP_USER, FTP_PASSWORD
-# Variables facultatives (onglet « Variables ») : FTP_DIR (www par défaut), FTP_TLS (true par défaut)
+# Variable facultative (onglet « Variables ») : FTP_DIR (www par défaut)
 # =============================================================================
 name: Tester et mettre en ligne
 
@@ -26,7 +26,7 @@ jobs:
     name: Construire et tester l'image Docker
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Construire l'image
         run: docker build -t portfolio:test .
       - name: Test de fumée (le site démarre et répond)
@@ -44,7 +44,7 @@ jobs:
       name: production
       url: https://thomas-jondeau.fr
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Installer lftp
         run: sudo apt-get update -q && sudo apt-get install -y -q lftp
       - name: Envoyer src/ dans www/
@@ -53,8 +53,33 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_DIR: ${{ vars.FTP_DIR || 'www' }}
-          TLS: ${{ vars.FTP_TLS || 'true' }}
         run: |
-          lftp -u "$FTP_USER","$FTP_PASSWORD" -e "set ftp:ssl-allow $TLS; set ftp:ssl-force $TLS; set ssl:verify-certificate yes; mirror --reverse --delete --verbose src/ $FTP_DIR/; bye" "$FTP_HOST"
+          # secrets présents ?
+          for v in FTP_HOST FTP_USER FTP_PASSWORD; do
+            [ -n "${!v}" ] || { echo "::error::Le secret $v est vide ou absent"; exit 1; }
+          done
+          # nom du serveur nettoyé (sans ftp:// ni espaces ni / final)
+          HOST=$(echo "$FTP_HOST" | sed -e 's#^ftps\?://##' -e 's#/*$##' | tr -d '[:space:]')
+          MIRROR="mirror --reverse --delete --verbose src/ $FTP_DIR/"
+          send() {   # $1 = réglages lftp ; le reste = description
+            echo "::group::Tentative : $2"
+            lftp -u "$FTP_USER","$FTP_PASSWORD" -e "set net:timeout 20; set net:max-retries 2; $1; $MIRROR; bye" "$HOST"
+            local rc=$?; echo "::endgroup::"; return $rc
+          }
+          # 1. FTP chiffré avec vérification du certificat
+          send "set ftp:ssl-force true; set ssl:verify-certificate yes" "FTP chiffré (certificat vérifié)" && exit 0
+          # 2. FTP chiffré sans vérification du nom du certificat (le certificat OVH ne porte pas toujours le nom du cluster)
+          send "set ftp:ssl-force true; set ssl:verify-certificate no" "FTP chiffré (certificat non vérifié)" && exit 0
+          # 3. FTP simple, si l'hébergement n'accepte pas le chiffrement
+          echo "::warning::Le chiffrement FTP est refusé par l'hébergeur : envoi en FTP simple"
+          send "set ftp:ssl-allow false" "FTP simple" && exit 0
+          echo "::error::Connexion FTP impossible : vérifier FTP_HOST (ex. ftp.cluster0XX.hosting.ovh.net), FTP_USER et FTP_PASSWORD"
+          exit 1
       - name: Vérifier que le site répond
-        run: curl -fsI https://thomas-jondeau.fr/ | head -n 1
+        # n'échoue pas la mise en ligne : le certificat HTTPS d'OVH peut mettre quelques heures à s'activer
+        continue-on-error: true
+        run: |
+          curl -fsI https://thomas-jondeau.fr/ | head -n 1 || {
+            echo "::warning::https://thomas-jondeau.fr ne répond pas encore en HTTPS (certificat SSL OVH pas encore actif ?)"
+            curl -sI http://thomas-jondeau.fr/ | head -n 1
+            exit 1; }
