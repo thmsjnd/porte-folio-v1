@@ -1,0 +1,143 @@
+/* Concept : Toulouse, la ville rose, en 3D low-poly pastel. Trois quartiers = trois métiers.
+   La caméra survole la ville au défilement ; l'interface est un éditeur de code posé sur la scène. */
+:root{
+  --cream:#fffaf5;          /* fond des panneaux */
+  --ink:#2b2840;            /* texte principal */
+  --ink-2:#6d6a85;          /* texte secondaire */
+  --line:rgba(43,40,64,.12);
+  --brick:#ef9f95;          /* rose brique toulousain */
+  --former:#b9a6f4;         /* quartier Former : lavande */
+  --piloter:#86d9bd;        /* quartier Piloter : menthe */
+  --dev:#89c2ff;            /* quartier Développement : ciel */
+  --ent:#f3c46b;            /* quartier Entreprise : jaune doré */
+  --tronc:#f2c6bb;          /* profil : rose brique clair */
+  --sky:#f6dcd4;            /* horizon */
+  /* coloration syntaxique, assez soutenue pour être lisible sur crème */
+  --sx-key:#7457e8; --sx-str:#cc5873; --sx-num:#1f9a83; --sx-com:#9a97ad; --sx-prop:#3a6bd0;
+  --f-display:"Martian Mono",ui-monospace,Menlo,monospace;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-code:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--sky);color:var(--ink);margin:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+#track{position:relative;z-index:-1}
+
+/* ---------- Barre du haut : invite de commande ---------- */
+#hud{position:fixed;z-index:5;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:calc(12px + env(safe-area-inset-top,0px)) clamp(16px,3vw,36px) 0;pointer-events:none}
+.prompt{font-family:var(--f-code);font-size:13px;background:rgba(255,250,245,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:8px;padding:7px 12px;white-space:nowrap;overflow:hidden;max-width:calc(100vw - 32px)}
+.prompt .u{color:var(--sx-num);font-weight:700}.prompt .h{color:var(--sx-key)}.prompt .cmd{color:var(--ink)}
+.prompt .cur{display:inline-block;width:8px;height:15px;background:var(--ink);vertical-align:-3px;margin-left:2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.hud-r{display:flex;align-items:center;gap:8px}
+/* bouton musique : icône + petit égaliseur animé quand la musique joue */
+#music{pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:8px;
+  border:1px solid var(--line);background:rgba(255,250,245,.82);color:var(--ink-2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#music:hover{color:var(--ink)}
+#music:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+#music .eq{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+#music .eq i{width:2px;height:3px;background:currentColor;border-radius:1px}
+#music.on{color:var(--ink)}
+#music.on .eq i{animation:eq 1s ease-in-out infinite}
+#music.on .eq i:nth-child(2){animation-delay:-.35s}#music.on .eq i:nth-child(3){animation-delay:-.7s}
+@keyframes eq{0%,100%{height:3px}50%{height:12px}}
+@media (prefers-reduced-motion:reduce){#music.on .eq i{animation:none;height:8px}}
+.coords{font-family:var(--f-code);font-size:12px;color:var(--ink-2);background:rgba(255,250,245,.7);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-variant-numeric:tabular-nums}
+
+/* ---------- Fiche « inspecteur » : compacte mais dense ---------- */
+#panel{position:fixed;z-index:4;left:clamp(16px,2.4vw,32px);top:50%;width:min(372px,calc(100vw - 32px));transform:translateY(-46%)}
+.card{position:absolute;left:0;top:0;width:100%;transform:translateY(-50%);opacity:0;pointer-events:none;
+  transition:opacity .4s ease,transform .5s cubic-bezier(.2,.7,.2,1)}
+.card.on{opacity:1;pointer-events:auto}
+.card.before{transform:translateY(calc(-50% + 18px))}
+.card.after{transform:translateY(calc(-50% - 18px))}
+.ed{background:rgba(255,250,245,.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 14px 40px -18px rgba(80,50,90,.35);overflow:hidden;max-height:calc(100vh - 150px);display:flex;flex-direction:column}
+.ed-bar{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--c,#eee)}
+.ed-bar .file{font-family:var(--f-code);font-size:11.5px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-bar .zone{margin-left:auto;font-family:var(--f-code);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);opacity:.75;white-space:nowrap}
+.ed-body{padding:13px 14px 12px;overflow-y:auto;min-height:0}
+.ed h1,.ed h2{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.02em;font-weight:800}
+.ed h1{font-size:22px;line-height:1.1}
+.ed h2{font-size:17px;line-height:1.2}
+.role{font-weight:600;font-size:13.5px;margin:4px 0 0}
+.meta{font-family:var(--f-code);font-size:11.5px;color:var(--ink-2);margin:3px 0 0}
+.stats{display:flex;gap:6px;margin:10px 0 0}
+.stats div{flex:1;min-width:0;background:rgba(43,40,64,.04);border-radius:6px;padding:6px 8px}
+.stats b{display:block;font-family:var(--f-display);font-size:15px;font-weight:800;color:var(--sx-key);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats span{display:block;font-size:11.5px;color:var(--ink-2);line-height:1.3}
+.pitch{font-size:13.5px;margin:10px 0 0;line-height:1.5}
+.key{font-family:var(--f-code);font-size:11px;color:var(--sx-prop);margin:11px 0 4px}
+.key::after{content:":";color:var(--sx-com)}
+.items{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.items li{font-size:13px;line-height:1.42;padding-left:14px;position:relative}
+.items li::before{content:"›";position:absolute;left:2px;color:var(--sx-key);font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:4px;list-style:none;margin:0;padding:0}
+.chips li{font-family:var(--f-code);font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(43,40,64,.06);color:var(--sx-str)}
+.zones{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.zones button{all:unset;cursor:pointer;display:grid;grid-template-columns:10px minmax(0,1fr);gap:8px;align-items:baseline;width:100%;font-size:13px;padding:4px 6px;margin:0 -6px;border-radius:6px}
+.zones button:hover{background:rgba(43,40,64,.05)}
+.zones button:focus-visible{outline:2px solid var(--ink)}
+.zones i{width:9px;height:9px;border-radius:2px;background:var(--c)}
+.zones b{font-family:var(--f-code);font-size:12px}
+.hint{font-family:var(--f-code);font-size:11px;color:var(--ink-2);margin-top:10px}
+.mailrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+.mail{font-family:var(--f-code);font-size:13px;padding:6px 9px;border-radius:6px;border:1px solid var(--line);background:#fff;user-select:all;word-break:break-all}
+.btn{font:600 12px var(--f-code);color:var(--cream);background:var(--ink);border:0;border-radius:6px;padding:7px 11px;cursor:pointer}
+#copied{font-family:var(--f-code);font-size:11.5px;color:var(--sx-num)}
+/* ---------- Fiche de contact : appel à l'action ---------- */
+.trio{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.trio li{border-radius:8px;padding:8px 8px 9px;background:color-mix(in srgb,var(--c) 28%,#fff);border-top:3px solid var(--c)}
+.trio b{display:block;font-family:var(--f-display);font-size:13px;font-weight:800}
+.trio span{display:block;font-size:11.5px;color:var(--ink-2);line-height:1.3;margin-top:2px}
+.cta{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:11px 16px;border-radius:8px;
+  background:var(--ink);color:var(--cream);font:700 14px var(--f-code);text-decoration:none;transition:background .2s ease}
+.cta:hover{background:#3d3958}
+.cta:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.cta span{transition:transform .2s ease}.cta:hover span{transform:translateX(3px)}
+.copyic{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;color:var(--ink-2)}
+.copyic:hover{background:rgba(43,40,64,.07);color:var(--ink)}
+.copyic:focus-visible{outline:2px solid var(--ink)}
+.again{all:unset;cursor:pointer;display:block;margin-top:10px;font-family:var(--f-code);font-size:11.5px;color:var(--ink-2)}
+.again:hover{color:var(--ink)}.again:focus-visible{outline:2px solid var(--ink)}
+/* une couleur par quartier, reprise par la fiche, la barre de progression et les étiquettes */
+.z-tronc{--c:var(--tronc)}.z-dev{--c:var(--dev)}.z-form{--c:var(--former)}.z-pm{--c:var(--piloter)}.z-ent{--c:var(--ent)}.z-none{--c:#f6d3ca}
+.org{font-weight:600;font-size:13.5px;margin:4px 0 0}
+.tl{list-style:none;margin:0 0 10px;padding:0;display:flex;gap:4px;font-family:var(--f-code);font-size:10.5px}
+.tl li{flex:1;min-width:0;text-align:center;padding:4px 2px;border-radius:4px;background:rgba(43,40,64,.05);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.tl li.done{color:var(--ink)}
+.tl li.now{background:var(--c);color:var(--ink);font-weight:700}
+.projets{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.projets li{border-left:2px solid var(--c);padding:1px 0 1px 9px}
+.projets b{display:block;font-size:13px}
+.projets span{display:block;font-size:12.5px;color:var(--ink-2);line-height:1.42}
+
+/* ---------- Étiquettes 3D (noms de lieux) ---------- */
+#labels{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.lab{position:absolute;left:0;top:0;white-space:nowrap;font-family:var(--f-code);font-size:12px;font-weight:500;color:var(--ink);
+  background:rgba(255,250,245,.9);border:1px solid var(--line);border-left:3px solid var(--c,var(--brick));border-radius:6px;padding:3px 8px;transition:opacity .3s}
+.lab .nm::before{content:"<";color:var(--sx-com)}.lab .nm::after{content:" />";color:var(--sx-com)}
+/* nom de quartier, sur les vues d'ensemble : grand nom + ce qu'on y trouve */
+.lab.big{font-size:17px;font-weight:800;padding:7px 13px 8px;border-left-width:6px;box-shadow:0 6px 18px rgba(60,40,60,.16)}
+.lab .sub{display:block;margin-top:2px;font-family:var(--f-body);font-size:11.5px;font-weight:500;color:var(--ink-2)}
+
+/* ---------- Barre de progression par quartier ---------- */
+#prog{position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;
+  background:rgba(255,250,245,.88);border:1px solid var(--line);border-radius:999px;padding:6px 8px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#prog button{width:26px;height:8px;border-radius:999px;border:0;background:rgba(43,40,64,.12);cursor:pointer;padding:0;transition:background .25s,width .25s}
+#prog button.on{background:var(--c,var(--ink));width:40px}
+#prog button:focus-visible,.btn:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+@media (max-width:780px){
+  #panel{top:auto;bottom:calc(44px + env(safe-area-inset-bottom,0px));transform:none}
+  .card,.card.before,.card.after{top:auto;bottom:0;transform:none}
+  .card.before{transform:translateY(14px)}.card.after{transform:translateY(-14px)}
+  .ed{max-height:52vh}
+  .coords{display:none}
+  #prog button{width:18px}#prog button.on{width:28px}
+}
+@media (prefers-reduced-motion:reduce){.card,.lab{transition:none}.prompt .cur{animation:none}}

@@ -1,0 +1,60 @@
+# =============================================================================
+# GitHub Actions : à chaque push sur main
+#   1. construit l'image Docker et vérifie qu'elle répond (/healthz) ;
+#   2. si le test passe, envoie le dossier src/ sur l'hébergement OVH (www/) par FTP chiffré.
+#      Les fichiers supprimés du dépôt sont aussi supprimés en ligne.
+# Secrets à définir : Settings → Secrets and variables → Actions → New repository secret
+#   FTP_HOST (ex. ftp.cluster0XX.hosting.ovh.net), FTP_USER, FTP_PASSWORD
+# Variables facultatives (onglet « Variables ») : FTP_DIR (www par défaut), FTP_TLS (true par défaut)
+# =============================================================================
+name: Tester et mettre en ligne
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:          # bouton « Run workflow » pour relancer à la main
+
+permissions:
+  contents: read
+
+concurrency:                  # jamais deux mises en ligne en même temps
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Construire et tester l'image Docker
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construire l'image
+        run: docker build -t portfolio:test .
+      - name: Test de fumée (le site démarre et répond)
+        run: |
+          docker run -d --name smoke -p 8080:8080 portfolio:test
+          for i in $(seq 1 15); do curl -fs http://localhost:8080/healthz && break; sleep 1; done
+          curl -fs http://localhost:8080/ | grep -q "Thomas Jondeau"
+          docker rm -f smoke
+
+  deploy:
+    name: Mettre en ligne sur OVH
+    needs: test
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://thomas-jondeau.fr
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer lftp
+        run: sudo apt-get update -q && sudo apt-get install -y -q lftp
+      - name: Envoyer src/ dans www/
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.FTP_DIR || 'www' }}
+          TLS: ${{ vars.FTP_TLS || 'true' }}
+        run: |
+          lftp -u "$FTP_USER","$FTP_PASSWORD" -e "set ftp:ssl-allow $TLS; set ftp:ssl-force $TLS; set ssl:verify-certificate yes; mirror --reverse --delete --verbose src/ $FTP_DIR/; bye" "$FTP_HOST"
+      - name: Vérifier que le site répond
+        run: curl -fsI https://thomas-jondeau.fr/ | head -n 1

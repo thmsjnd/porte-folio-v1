@@ -1,0 +1,5 @@
+# Tous les moteurs de recherche sont les bienvenus
+User-agent: *
+Allow: /
+
+Sitemap: https://thomas-jondeau.fr/sitemap.xml

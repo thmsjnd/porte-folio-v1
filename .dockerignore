@@ -1,0 +1,7 @@
+# Seuls Dockerfile, docker/ et src/ sont utiles à la construction
+.git
+.github
+*.md
+docker-compose*.yml
+Makefile
+.env

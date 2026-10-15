@@ -1,0 +1,12 @@
+# =============================================================================
+# Développement local : le dossier src/ est monté dans le conteneur,
+# chaque modification est visible en rechargeant la page (sans reconstruire).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# =============================================================================
+services:
+  portfolio:
+    container_name: portfolio-dev
+    image: portfolio-thomas-jondeau:dev
+    restart: "no"
+    volumes:
+      - ./src:/usr/share/nginx/html:ro

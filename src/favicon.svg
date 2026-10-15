@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Favicon Thomas Jondeau : invite de commande « tj_ » aux couleurs du portfolio -->
+  <rect width="64" height="64" rx="14" fill="#2b2840"/>
+  <text x="9" y="42" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="30" font-weight="700" fill="#ef9f95">tj</text>
+  <rect x="45" y="36" width="11" height="6" rx="1.5" fill="#b9a6f4"/>
+</svg>

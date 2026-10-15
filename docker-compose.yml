@@ -1,0 +1,29 @@
+# =============================================================================
+# Production : image construite puis lancée en conteneur durci
+#   docker compose up -d --build      → http://localhost:8090
+# =============================================================================
+services:
+  portfolio:
+    build: .
+    image: ${IMAGE:-portfolio-thomas-jondeau}:${TAG:-latest}
+    # Image construite localement : Compose ne tente plus de la télécharger (supprime « pull access denied »)
+    pull_policy: build
+    container_name: portfolio
+    ports:
+      - "${PORT:-8090}:8080"   # port de la machine : 8090 par défaut pour éviter les conflits avec 8080
+    restart: unless-stopped
+    environment:
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"   # masque les messages de démarrage de l'image Nginx
+    # Durcissement : système de fichiers en lecture seule, aucun privilège
+    read_only: true
+    tmpfs:
+      - /tmp            # Nginx y écrit son PID et ses fichiers temporaires
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
